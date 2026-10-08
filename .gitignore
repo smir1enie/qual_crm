@@ -1,0 +1,46 @@
+# ===== Database & data =====
+server/data/crm.db
+server/data/crm.db-shm
+server/data/crm.db-wal
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
+
+# ===== Uploaded files (Excel sources, documents) =====
+server/data/uploads/
+server/data/uploads/*
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ===== OS files =====
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ===== IDE / Editor =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== Temp / test files =====
+*.tmp
+*.bak
+test_*.py
+test_*.xlsx
+inspect_excel.py
+fio_compare.py
+excel_report.txt
+fio_compare.txt
+
+# ===== Logs =====
+*.log
