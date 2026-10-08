@@ -45,6 +45,20 @@ if defined CRM_CHECK (
 )
 
 echo Python: %PYEXE%
+
+REM Check and install dependencies (xlrd, openpyxl)
+echo Checking dependencies...
+"%PYEXE%" -c "import xlrd, openpyxl" 2>nul
+if errorlevel 1 (
+  echo Installing dependencies (xlrd, openpyxl)...
+  "%PYEXE%" -m pip install -r requirements.txt
+  if errorlevel 1 (
+    echo Failed to install dependencies. Check your internet connection.
+    goto :fail
+  )
+  echo Dependencies installed.
+)
+
 echo Open:   http://127.0.0.1:%CRM_PORT%/
 if /I "%CRM_HOST%"=="0.0.0.0" echo LAN mode: other laptops on the same Wi-Fi can open the Network URL from this window.
 echo Keep this window open while using CRM.
