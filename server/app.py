@@ -70,12 +70,16 @@ class Handler(SimpleHTTPRequestHandler):
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
         from openpyxl.utils import get_column_letter
+        from openpyxl.worksheet.page import PageMargins, PrintOptions
 
         wb = Workbook()
         ws = wb.active
         ws.title = "Отчёт"
 
-        headers = ["№", "ФИО", "Год", "Курс", "Место работы", "Должность", "Район", "Тип ОУ"]
+        headers = ["№", "ФИО", "Год", "Курс", "Место работы", "Должность", "Район", "Тип ОУ",
+                   "Источник финансирования", "Пол", "Кто проводит", "ВХ ИРО/ДР",
+                   "ОТВЕТ ИРО/ДР", "ПРИКАЗ ДО", "ПИСЬМО ЦРО", "Серия № удостоверения",
+                   "Рег. № удостоверения", "Эксперт"]
 
         # Title row
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
@@ -89,7 +93,7 @@ class Handler(SimpleHTTPRequestHandler):
 
         # Header row (row 3)
         header_fill = PatternFill(start_color="F0F0F0", end_color="F0F0F0", fill_type="solid")
-        header_font = Font(bold=True, size=11)
+        header_font = Font(bold=True, size=10)
         thin_border = Border(
             left=Side(style="thin", color="CCCCCC"),
             right=Side(style="thin", color="CCCCCC"),
@@ -102,9 +106,11 @@ class Handler(SimpleHTTPRequestHandler):
             cell.fill = header_fill
             cell.border = thin_border
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        ws.row_dimensions[3].height = 24
+        ws.row_dimensions[3].height = 30
 
         # Data rows
+        data_font = Font(size=10)
+        name_font = Font(size=10, bold=True)
         for row_idx, item in enumerate(items, 1):
             excel_row = row_idx + 3
             values = [
@@ -116,25 +122,74 @@ class Handler(SimpleHTTPRequestHandler):
                 item.get("position", "") or "",
                 item.get("district", "") or "",
                 item.get("org_type", "") or "",
+                item.get("funding_source", "") or "",
+                item.get("gender", "") or "",
+                item.get("course_provider", "") or "",
+                item.get("incoming_letter", "") or "",
+                item.get("response_letter", "") or "",
+                item.get("do_order", "") or "",
+                item.get("cro_letter", "") or "",
+                item.get("certificate_series", "") or "",
+                item.get("certificate_reg", "") or "",
+                "Да" if item.get("is_expert") else "",
             ]
             for col_idx, val in enumerate(values, 1):
                 cell = ws.cell(row=excel_row, column=col_idx, value=val)
                 cell.border = thin_border
-                cell.alignment = Alignment(vertical="top", wrap_text=True)
-            ws.cell(row=excel_row, column=2).font = Font(bold=True)
+                cell.alignment = Alignment(vertical="top", wrap_text=True, horizontal="left" if col_idx > 1 else "center")
+                cell.font = name_font if col_idx == 2 else data_font
+            # Высота строки — адаптивно, минимум для читаемости
+            longest = max(
+                len(str(values[3] or "")),   # курс
+                len(str(values[4] or "")),    # место работы
+                len(str(values[10] or "")),   # кто проводит
+            )
+            ws.row_dimensions[excel_row].height = max(16, min(60, 14 + (longest // 30) * 14))
 
-        # Auto-width columns based on content
-        for col_idx in range(1, len(headers) + 1):
-            max_len = len(str(headers[col_idx - 1]))
-            for row_idx in range(1, len(items) + 1):
-                val = ws.cell(row=row_idx + 3, column=col_idx).value
-                if val is not None:
-                    lines = str(val).split("\n")
-                    for line in lines:
-                        if len(line) > max_len:
-                            max_len = len(line)
-            col_width = min(max(max_len + 2, 8), 60)
-            ws.column_dimensions[get_column_letter(col_idx)].width = col_width
+        # Ширина колонок — фиксированные, оптимизированные для печати на A4 landscape
+        # Сумма ширин ~ 250 (вписывается в альбомную A4 при fit-to-width=1)
+        col_widths = {
+            1: 5,    # №
+            2: 22,   # ФИО
+            3: 7,    # Год
+            4: 28,   # Курс
+            5: 22,   # Место работы
+            6: 16,   # Должность
+            7: 14,   # Район
+            8: 14,   # Тип ОУ
+            9: 14,   # Источник финансирования
+            10: 8,   # Пол
+            11: 20,  # Кто проводит
+            12: 16,  # ВХ ИРО/ДР
+            13: 16,  # ОТВЕТ ИРО/ДР
+            14: 10,  # ПРИКАЗ ДО
+            15: 16,  # ПИСЬМО ЦРО
+            16: 14,  # Серия № удостоверения
+            17: 12,  # Рег. № удостоверения
+            18: 8,   # Эксперт
+        }
+        for col_idx, w in col_widths.items():
+            ws.column_dimensions[get_column_letter(col_idx)].width = w
+
+        # ===== Настройки печати =====
+        # Альбомная ориентация A4
+        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+        # Вписать все колонки в 1 страницу по ширине, страницы по высоте — сколько нужно
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        # Поля печати (узкие, в дюймах: ~0.3")
+        ws.page_margins = PageMargins(left=0.3, right=0.3, top=0.4, bottom=0.4, header=0.2, footer=0.2)
+        # Центрировать по горизонтали
+        ws.print_options.horizontalCentered = True
+        # Повторять строку заголовков (строка 3) на каждой печатной странице
+        ws.print_title_rows = "1:3"
+        # Сетка при печати
+        ws.print_options.gridLines = False
+        # Область печати — все данные
+        last_row = len(items) + 3
+        ws.print_area = f"A1:{get_column_letter(len(headers))}{last_row}"
 
         ws.freeze_panes = "A4"
 
@@ -172,8 +227,11 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._send(*json_bytes({"ok": True}))
             if path == "/api/years":
                 years = db.list_years(conn)
+                is_expert = None
+                if "is_expert" in query and query["is_expert"] != "":
+                    is_expert = int(query["is_expert"])
                 result = [
-                    {"year": y, "count": db.count_by_year(conn, y)}
+                    {"year": y, "count": db.count_by_year(conn, y, is_expert)}
                     for y in years
                 ]
                 return self._send(*json_bytes(result))
@@ -186,6 +244,8 @@ class Handler(SimpleHTTPRequestHandler):
                     val = query.get(key, "")
                     if val:
                         course_filters[key] = val
+                if "is_expert" in query and query["is_expert"] != "":
+                    course_filters["is_expert"] = int(query["is_expert"])
                 return self._send(*json_bytes(db.list_courses(conn, year, course_filters or None)))
             if path == "/api/participants":
                 year = int(query.get("year", 0))
@@ -198,32 +258,85 @@ class Handler(SimpleHTTPRequestHandler):
                     val = query.get(key, "")
                     if val:
                         filters[key] = val
+                if "is_expert" in query and query["is_expert"] != "":
+                    filters["is_expert"] = int(query["is_expert"])
                 if q:
                     filters["q"] = q
                 sort_by = query.get("sort", "number")
                 sort_dir = query.get("dir", "asc")
                 if filters or sort_by != "number" or sort_dir != "asc":
                     return self._send(*json_bytes(db.filter_participants(conn, year, course, filters, sort_by, sort_dir)))
-                return self._send(*json_bytes(db.list_participants(conn, year, course, q)))
+                is_expert = filters.get("is_expert")
+                return self._send(*json_bytes(db.list_participants(conn, year, course, q, is_expert)))
             if path == "/api/filter-options":
                 year = query.get("year")
                 year_val = int(year) if year else None
-                return self._send(*json_bytes(db.list_filter_options(conn, year_val)))
+                is_expert = None
+                if "is_expert" in query and query["is_expert"] != "":
+                    is_expert = int(query["is_expert"])
+                return self._send(*json_bytes(db.list_filter_options(conn, year_val, is_expert)))
             if path == "/api/search":
                 q = query.get("q", "")
                 if not q:
                     return self._send(*json_bytes([]))
-                return self._send(*json_bytes(db.global_search(conn, q)))
+                is_expert = None
+                if "is_expert" in query and query["is_expert"] != "":
+                    is_expert = int(query["is_expert"])
+                year = None
+                if "year" in query and query["year"] != "":
+                    try:
+                        year = int(query["year"])
+                    except ValueError:
+                        year = None
+                return self._send(*json_bytes(db.global_search(conn, q, is_expert=is_expert, year=year)))
             if path == "/api/stats":
                 return self._send(*json_bytes(db.get_stats(conn)))
             if path == "/api/imports":
                 return self._send(*json_bytes(db.list_imports(conn)))
+            if path == "/api/imports-with-files":
+                return self._send(*json_bytes(db.list_imports_with_files(conn)))
             if path.startswith("/api/participant/"):
                 participant_id = int(path.rsplit("/", 1)[1])
                 result = db.get_participant(conn, participant_id)
                 status = result.get("error", 200)
                 if isinstance(status, int) and status != 200:
                     return self._send(*json_bytes(result, status))
+                return self._send(*json_bytes(result))
+            return self._send(*json_bytes({"error": "Неизвестный маршрут"}, 404))
+        except Exception as e:
+            return self._send(*json_bytes({"error": str(e)}, 400))
+        finally:
+            conn.close()
+
+    def do_PUT(self):
+        parsed = urlparse(self.path)
+        if not parsed.path.startswith("/api/"):
+            return self._send(*json_bytes({"error": "Неизвестный маршрут"}, 404))
+        conn = db.connect()
+        try:
+            if parsed.path.startswith("/api/participant/"):
+                participant_id = int(parsed.path.rsplit("/", 1)[1])
+                payload = self._read_json()
+                result = db.update_participant(conn, participant_id, payload)
+                status = result.get("error", 200)
+                if isinstance(status, int) and status != 200:
+                    return self._send(*json_bytes(result, status))
+                return self._send(*json_bytes(result))
+            return self._send(*json_bytes({"error": "Неизвестный маршрут"}, 404))
+        except Exception as e:
+            return self._send(*json_bytes({"error": str(e)}, 400))
+        finally:
+            conn.close()
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        if not parsed.path.startswith("/api/"):
+            return self._send(*json_bytes({"error": "Неизвестный маршрут"}, 404))
+        conn = db.connect()
+        try:
+            if parsed.path.startswith("/api/participant/"):
+                participant_id = int(parsed.path.rsplit("/", 1)[1])
+                result = db.delete_participant(conn, participant_id)
                 return self._send(*json_bytes(result))
             return self._send(*json_bytes({"error": "Неизвестный маршрут"}, 404))
         except Exception as e:
@@ -246,19 +359,72 @@ class Handler(SimpleHTTPRequestHandler):
                 if not file_b64:
                     return self._send(*json_bytes({"error": "Файл не передан"}, 400))
                 raw = base64.b64decode(file_b64)
+                if not raw:
+                    return self._send(*json_bytes({"error": "Файл пустой"}, 400))
                 stored_path = db.UPLOADS / f"{time.strftime('%Y%m%d%H%M%S')}_{file_name}"
                 stored_path.write_bytes(raw)
-                result = db.import_xls(conn, stored_path, file_name)
+                try:
+                    result = db.import_xls(conn, stored_path, file_name)
+                except ValueError as ve:
+                    # Валидация не прошла — удаляем файл-сироту
+                    try:
+                        stored_path.unlink()
+                    except OSError:
+                        pass
+                    return self._send(*json_bytes({"error": str(ve)}, 400))
                 status = 409 if isinstance(result, dict) and result.get("duplicate") else 201
                 return self._send(*json_bytes(result, status))
             if parsed.path == "/api/participant":
                 payload = self._read_json()
                 result = db.add_participant(conn, payload)
                 return self._send(*json_bytes(result, 201))
+            if parsed.path == "/api/participant/excel":
+                payload = self._read_json()
+                try:
+                    result = db.add_participant_to_excel(conn, payload, payload.get("import_id"))
+                    return self._send(*json_bytes(result, 201))
+                except ValueError as ve:
+                    return self._send(*json_bytes({"error": str(ve)}, 400))
             if parsed.path == "/api/reset":
                 payload = self._read_json()
                 delete_files = payload.get("delete_files", False)
                 return self._send(*json_bytes(db.wipe_registry(conn, delete_files)))
+            if parsed.path == "/api/reimport":
+                # Перечитать основной Excel-файл из папки exel и обновить базу.
+                # По умолчанию — только основной файл (с наибольшим числом записей).
+                try:
+                    payload = self._read_json()
+                except Exception:
+                    payload = {}
+                file_name = payload.get("file_name") if isinstance(payload, dict) else None
+                if file_name:
+                    target = EXCEL_FOLDER / file_name
+                    if not target.exists():
+                        return self._send(*json_bytes({"error": f"Файл не найден: {file_name}"}, 400))
+                    results = [db.import_xls(conn, target, source_path=str(target.resolve()))]
+                else:
+                    # Только основной файл — с наибольшим числом записей в БД
+                    main = db.get_main_import_file(conn, EXCEL_FOLDER)
+                    if main:
+                        results = [db.import_xls(conn, main, source_path=str(main.resolve()))]
+                    else:
+                        results = []
+                summary = {
+                    "ok": True,
+                    "files": results,
+                    "total_files": len(results),
+                    "total_rows": sum(r.get("rows", 0) for r in results if r.get("ok")),
+                    "total_skipped": sum(r.get("skipped_duplicates", 0) for r in results if r.get("ok")),
+                    "duplicates": sum(1 for r in results if r.get("duplicate")),
+                }
+                return self._send(*json_bytes(summary))
+            if parsed.path == "/api/export-excel":
+                # Выгрузка всех данных из БД в основной Excel-файл (v4.xlsx)
+                try:
+                    result = db.export_to_main_excel(conn, EXCEL_FOLDER)
+                    return self._send(*json_bytes(result))
+                except ValueError as ve:
+                    return self._send(*json_bytes({"error": str(ve)}, 400))
             if parsed.path == "/api/report/export":
                 payload = self._read_json()
                 title = payload.get("title", "Отчёт")

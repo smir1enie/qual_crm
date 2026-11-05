@@ -1,3 +1,34 @@
+
+/* ===== Custom autocomplete dropdown ===== */
+.ac-dropdown {
+  z-index: 10000;
+  max-height: 320px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  font-size: 14px;
+  padding: 4px 0;
+}
+.ac-dropdown .ac-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  color: #1e293b;
+  border-radius: 6px;
+  margin: 0 4px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.3;
+}
+.ac-dropdown .ac-item:hover,
+.ac-dropdown .ac-item.active {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+.ac-dropdown::-webkit-scrollbar { width: 10px; }
+.ac-dropdown::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 5px; }
+.ac-dropdown::-webkit-scrollbar-track { background: #f1f5f9; }
 /* ===== Dashboard ===== */
 
 /* Statistics Page */
@@ -1925,6 +1956,63 @@
   gap: 16px;
 }
 
+.dossier-actions {
+  margin-left: auto;
+}
+
+.dossier-edit-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--black);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.dossier-edit-btn:hover {
+  border-color: var(--black);
+  background: var(--black);
+  color: var(--white);
+}
+
+.dossier-delete-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  background: var(--white);
+  border: 1px solid #ef4444;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: #ef4444;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dossier-delete-btn:hover {
+  background: #ef4444;
+  color: var(--white);
+}
+.dossier-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.form-hint {
+  font-size: 12px;
+  padding: 8px 12px;
+  background: #f7f7f8;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
 .dossier-avatar {
   width: 56px;
   height: 56px;
@@ -2673,6 +2761,12 @@
   color: var(--text-secondary);
 }
 
+.selection-bar-hint {
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
+  opacity: 0.8;
+}
+
 .selection-bar-actions {
   display: flex;
   gap: 8px;
@@ -2895,6 +2989,155 @@
 .report-table-wrap:hover {
   border-color: var(--border);
   box-shadow: var(--shadow-card);
+}
+
+/* ===== Панель добавления в отчёт ===== */
+.report-add-panel {
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.report-add-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.report-add-panel-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.report-add-search {
+  position: relative;
+  flex: 1;
+  min-width: 240px;
+}
+.report-add-search .search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.report-add-search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px 0 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  background: var(--white);
+  box-sizing: border-box;
+}
+.report-add-search input:focus {
+  outline: none;
+  border-color: var(--text-secondary);
+}
+.report-add-results {
+  max-height: 360px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.report-add-hint {
+  padding: 16px 8px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.report-add-list {
+  display: flex;
+  flex-direction: column;
+}
+.report-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+.report-add-row:hover {
+  background: var(--bg-hover, #f7f7f8);
+}
+.report-add-row--added {
+  opacity: 0.6;
+}
+.report-add-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.report-add-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--black);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.report-add-row-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.report-add-row-sub--muted {
+  color: var(--text-tertiary, #999);
+  margin-top: 1px;
+}
+.report-add-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.report-add-badge--expert {
+  background: #fef3c7;
+  color: #92400e;
+}
+.report-add-btn {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--black);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.report-add-btn:hover {
+  border-color: var(--black);
+  background: var(--black);
+  color: var(--white);
+}
+.report-add-btn--added {
+  background: #ecfdf5;
+  border-color: #10b981;
+  color: #047857;
+  cursor: default;
+}
+.report-add-btn--added:hover {
+  background: #ecfdf5;
+  border-color: #10b981;
+  color: #047857;
+}
+.report-add-more {
+  padding: 10px 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .report-table {

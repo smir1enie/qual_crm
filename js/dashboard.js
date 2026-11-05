@@ -19,13 +19,35 @@ async function apiPost(url, data) {
   return result;
 }
 
+async function apiPut(url, data) {
+  const resp = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const result = await resp.json().catch(() => ({ error: resp.statusText }));
+  if (!resp.ok) throw new Error(result.error || 'Ошибка запроса');
+  return result;
+}
+
+async function apiDelete(url) {
+  const resp = await fetch(url, { method: 'DELETE' });
+  const result = await resp.json().catch(() => ({ error: resp.statusText }));
+  if (!resp.ok) throw new Error(result.error || 'Ошибка запроса');
+  return result;
+}
+
 // ===== Navigation state =====
-let currentView = 'registry'; // 'registry' | 'year' | 'course' | 'participant'
+let currentView = 'registry'; // 'registry' | 'year' | 'course' | 'participant' | 'experts'
 let selectedYear = null;
 let selectedCourse = null;
 let selectedParticipant = null;
 let yearsCache = null;
 let allCourses = []; // full list of courses for current year
+
+// Режим экспертов: когда активен, запросы курсов/участников/фильтров/поиска
+// передают is_expert=1. Включается разделом «Эксперты».
+let expertMode = false;
 
 // Filter & sort state
 let activeFilters = {}; // { district, org_type, position, date_from, date_to }
@@ -57,18 +79,20 @@ const tagsGroup = document.getElementById('tagsGroup');
 function updateBreadcrumbs() {
   if (!breadcrumbs) return;
   let html = '';
+  const rootLabel = expertMode ? 'Эксперты' : 'Реестр';
+  const rootNav = expertMode ? 'experts' : 'registry';
 
   if (isSearchMode) {
     const qShort = searchQuery.length > 30 ? searchQuery.slice(0, 30) + '…' : searchQuery;
     html =
-      '<span class="crumb crumb--link" data-nav="registry">Реестр</span>' +
+      `<span class="crumb crumb--link" data-nav="${rootNav}">${rootLabel}</span>` +
       '<svg class="chevron-right" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 2l4 4-4 4" stroke="#999" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
       `<span class="crumb crumb--active">Поиск: ${qShort}</span>`;
-  } else if (currentView === 'registry') {
-    html = '<span class="crumb crumb--active">Реестр</span>';
+  } else if (currentView === 'registry' || currentView === 'experts') {
+    html = `<span class="crumb crumb--active">${rootLabel}</span>`;
   } else if (currentView === 'year') {
     html =
-      '<span class="crumb crumb--link" data-nav="registry">Реестр</span>' +
+      `<span class="crumb crumb--link" data-nav="${rootNav}">${rootLabel}</span>` +
       '<svg class="chevron-right" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 2l4 4-4 4" stroke="#999" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
       `<span class="crumb crumb--active">${selectedYear}</span>`;
   } else if (currentView === 'course') {
@@ -76,7 +100,7 @@ function updateBreadcrumbs() {
       ? selectedCourse.slice(0, 50) + '…'
       : (selectedCourse || 'Курс');
     html =
-      '<span class="crumb crumb--link" data-nav="registry">Реестр</span>' +
+      `<span class="crumb crumb--link" data-nav="${rootNav}">${rootLabel}</span>` +
       '<svg class="chevron-right" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 2l4 4-4 4" stroke="#999" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
       `<span class="crumb crumb--link" data-nav="year">${selectedYear}</span>` +
       '<svg class="chevron-right" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 2l4 4-4 4" stroke="#999" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
@@ -87,7 +111,7 @@ function updateBreadcrumbs() {
       : (selectedCourse || 'Курс');
     const personLabel = selectedParticipant ? selectedParticipant.name : 'Личное дело';
     html =
-      '<span class="crumb crumb--link" data-nav="registry">Реестр</span>' +
+      `<span class="crumb crumb--link" data-nav="${rootNav}">${rootLabel}</span>` +
       '<svg class="chevron-right" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 2l4 4-4 4" stroke="#999" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
       `<span class="crumb crumb--link" data-nav="year">${selectedYear}</span>` +
       '<svg class="chevron-right" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 2l4 4-4 4" stroke="#999" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
@@ -105,6 +129,7 @@ function updateBreadcrumbs() {
       searchQuery = '';
       if (searchInput) searchInput.value = '';
       if (target === 'registry') navigateTo('registry');
+      else if (target === 'experts') navigateTo('experts');
       else if (target === 'year') navigateTo('year');
       else if (target === 'course') navigateTo('course');
     });
@@ -484,6 +509,16 @@ function renderParticipant(person) {
         <div class="dossier-name">${person.name || ''}</div>
         <div class="dossier-year">Год: ${person.year || ''}</div>
       </div>
+      <div class="dossier-actions">
+        <button class="dossier-edit-btn" id="editParticipantBtn" title="Редактировать запись">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 12.5V14h1.5l8-8L10 4.5l-8 8z M9.5 2.5l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Редактировать</span>
+        </button>
+        <button class="dossier-delete-btn" id="deleteParticipantBtn" title="Удалить запись">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V2.5h4V4M5 4l.5 9h5L11 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Удалить</span>
+        </button>
+      </div>
     </div>
     <div class="dossier-section">
       <div class="dossier-section-title">Основная информация</div>
@@ -520,6 +555,46 @@ function renderParticipant(person) {
           <span class="dossier-field-label">Дата окончания курса</span>
           <span class="dossier-field-value">${person.date_end || ''}</span>
         </div>
+        <div class="dossier-field">
+          <span class="dossier-field-label">Источник финансирования</span>
+          <span class="dossier-field-value">${person.funding_source || ''}</span>
+        </div>
+        <div class="dossier-field">
+          <span class="dossier-field-label">Пол</span>
+          <span class="dossier-field-value">${person.gender || ''}</span>
+        </div>
+        <div class="dossier-field">
+          <span class="dossier-field-label">Кто проводит курсы</span>
+          <span class="dossier-field-value">${person.course_provider || ''}</span>
+        </div>
+        <div class="dossier-field">
+          <span class="dossier-field-label">ВХ ИРО или ДР</span>
+          <span class="dossier-field-value">${person.incoming_letter || ''}</span>
+        </div>
+        <div class="dossier-field">
+          <span class="dossier-field-label">ОТВЕТ ИРО или ДР</span>
+          <span class="dossier-field-value">${person.response_letter || ''}</span>
+        </div>
+        <div class="dossier-field">
+          <span class="dossier-field-label">ПРИКАЗ ДО</span>
+          <span class="dossier-field-value">${person.do_order || ''}</span>
+        </div>
+        <div class="dossier-field">
+          <span class="dossier-field-label">ПИСЬМО ЦРО</span>
+          <span class="dossier-field-value">${person.cro_letter || ''}</span>
+        </div>
+        <div class="dossier-field">
+          <span class="dossier-field-label">Серия, № удостоверения</span>
+          <span class="dossier-field-value">${person.certificate_series || ''}</span>
+        </div>
+        <div class="dossier-field">
+          <span class="dossier-field-label">Рег. № удостоверения</span>
+          <span class="dossier-field-value">${person.certificate_reg || ''}</span>
+        </div>
+        <div class="dossier-field">
+          <span class="dossier-field-label">Эксперт</span>
+          <span class="dossier-field-value">${person.is_expert ? 'Да' : 'Нет'}</span>
+        </div>
       </div>
     </div>
     ${person.history && person.history.length > 0 ? `
@@ -534,16 +609,39 @@ function renderParticipant(person) {
   rowsContainer.appendChild(card);
 }
 
+// ===== Работа с датами: DD.MM.YYYY <-> YYYY-MM-DD (для фильтров/сортировки) =====
+function dateToSortable(val) {
+  // DD.MM.YYYY -> YYYYMMDD (строка, сортируемая корректно); пустое -> '99999999' (в конец)
+  const v = (val || '').trim();
+  const m = v.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+  if (m) return m[3] + m[2] + m[1];
+  const m2 = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m2) return m2[1] + m2[2] + m2[3];
+  return '99999999';
+}
+function isoToDisplay(iso) {
+  // YYYY-MM-DD (из input[type=date]) -> DD.MM.YYYY
+  const m = (iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : '';
+}
+function displayToIso(display) {
+  // DD.MM.YYYY -> YYYY-MM-DD (для input[type=date])
+  const m = (display || '').match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+}
+
 // ===== Reload courses with current sort/filters (year view) =====
 function sortAndFilterCourses(courses) {
   let list = [...courses];
 
-  // Filter by date range
+  // Filter by date range (корректное сравнение дат, не строк)
   if (activeFilters.date_from) {
-    list = list.filter((c) => (c.date_start || '') >= activeFilters.date_from);
+    const from = dateToSortable(activeFilters.date_from);
+    list = list.filter((c) => dateToSortable(c.date_start) >= from);
   }
   if (activeFilters.date_to) {
-    list = list.filter((c) => (c.date_end || '') <= activeFilters.date_to);
+    const to = dateToSortable(activeFilters.date_to);
+    list = list.filter((c) => dateToSortable(c.date_end) <= to);
   }
 
   // Sort
@@ -553,8 +651,8 @@ function sortAndFilterCourses(courses) {
       : (a.course || '').localeCompare(b.course || ''));
   } else if (courseSortBy === 'date') {
     list.sort((a, b) => courseSortDir === 'desc'
-      ? (b.date_start || '').localeCompare(a.date_start || '')
-      : (a.date_start || '').localeCompare(b.date_start || ''));
+      ? dateToSortable(b.date_start).localeCompare(dateToSortable(a.date_start))
+      : dateToSortable(a.date_start).localeCompare(dateToSortable(b.date_start)));
   } else if (courseSortBy === 'count') {
     list.sort((a, b) => courseSortDir === 'desc'
       ? (b.count || 0) - (a.count || 0)
@@ -567,6 +665,7 @@ function sortAndFilterCourses(courses) {
 async function reloadCourses() {
   if (currentView !== 'year') return;
   let url = `/api/courses?year=${selectedYear}`;
+  if (expertMode) url += `&is_expert=1`;
   if (activeFilters.district) url += `&district=${encodeURIComponent(activeFilters.district)}`;
   if (activeFilters.org_type) url += `&org_type=${encodeURIComponent(activeFilters.org_type)}`;
   if (activeFilters.position) url += `&position=${encodeURIComponent(activeFilters.position)}`;
@@ -588,6 +687,7 @@ async function reloadParticipants() {
   if (currentView !== 'course') return;
   currentPage = 1;
   let url = `/api/participants?year=${selectedYear}&course=${encodeURIComponent(selectedCourse)}`;
+  if (expertMode) url += `&is_expert=1`;
   const hasFilters = Object.keys(activeFilters).length > 0;
   if (activeFilters.district) url += `&district=${encodeURIComponent(activeFilters.district)}`;
   if (activeFilters.org_type) url += `&org_type=${encodeURIComponent(activeFilters.org_type)}`;
@@ -606,21 +706,35 @@ async function reloadParticipants() {
 }
 
 // ===== Navigation router (async) =====
-async function navigateTo(view) {
+async function navigateTo(view, opts) {
+  // opts.skipHistory = true — переход по кнопкам браузера (не добавляем запись в history)
+  const skipHistory = opts && opts.skipHistory;
   currentView = view;
   isSearchMode = false;
   searchQuery = '';
   if (searchInput) searchInput.value = '';
-  // Reset page selection when navigating
-  pageCheckedIds.clear();
+  // ВАЖНО: НЕ сбрасываем pageCheckedIds — выбор сохраняется между курсами,
+  // чтобы можно было отметить людей в разных курсах и добавить в отчёт сразу.
   updateSelectionBar();
 
   if (view === 'registry') {
+    expertMode = false;
     selectedYear = null;
     selectedCourse = null;
     activeFilters = {};
     try {
       yearsCache = await apiGet('/api/years');
+    } catch (e) {
+      yearsCache = [];
+    }
+    renderRegistry();
+  } else if (view === 'experts') {
+    expertMode = true;
+    selectedYear = null;
+    selectedCourse = null;
+    activeFilters = {};
+    try {
+      yearsCache = await apiGet('/api/years?is_expert=1');
     } catch (e) {
       yearsCache = [];
     }
@@ -649,7 +763,40 @@ async function navigateTo(view) {
   }
   updateBreadcrumbs();
   updateBars();
+
+  // Сохраняем навигационное состояние в History API для кнопок браузера
+  if (!skipHistory) {
+    const state = {
+      view: view,
+      year: selectedYear,
+      course: selectedCourse,
+      participantId: selectedParticipant ? selectedParticipant.id : null,
+      participantName: selectedParticipant ? selectedParticipant.name : null,
+      expertMode: expertMode,
+    };
+    history.pushState(state, '', '#' + view);
+  }
 }
+
+// ===== Кнопки браузера назад/вперёд (History API) =====
+window.addEventListener('popstate', async (event) => {
+  const state = event.state;
+  if (!state) {
+    // Нет состояния — возвращаемся в реестр
+    await navigateTo('registry', { skipHistory: true });
+    return;
+  }
+  // Восстанавливаем состояние без добавления новой записи в history
+  expertMode = !!state.expertMode;
+  selectedYear = state.year || null;
+  selectedCourse = state.course || null;
+  if (state.participantId) {
+    selectedParticipant = { id: state.participantId, name: state.participantName || '' };
+  } else {
+    selectedParticipant = null;
+  }
+  await navigateTo(state.view, { skipHistory: true });
+});
 
 // ===== Checkbox interactions =====
 function bindCheckboxes() {
@@ -739,16 +886,35 @@ if (selectionClearBtn) {
 }
 
 if (selectionAddReportBtn) {
-  selectionAddReportBtn.addEventListener('click', () => {
-    const pageData = getPageData();
+  selectionAddReportBtn.addEventListener('click', async () => {
+    if (pageCheckedIds.size === 0) {
+      showToast('Нет выбранных записей');
+      return;
+    }
     let added = 0;
-    pageCheckedIds.forEach((pid) => {
-      const item = pageData.find((p) => String(p.id) === pid);
-      if (item && !reportItems.has(String(item.id))) {
-        reportItems.set(String(item.id), item);
+    // Подгружаем полные данные для каждого отмеченного ID.
+    // Часть людей может быть из других курсов — их нет в allParticipants,
+    // поэтому запрашиваем через /api/participant/:id.
+    for (const pid of pageCheckedIds) {
+      if (reportItems.has(pid)) continue;
+      // Сначала пробуем найти в текущих данных страницы (быстро)
+      const pageData = getPageData();
+      const local = pageData.find((p) => String(p.id) === pid);
+      if (local && local.workplace) {
+        // Полные данные есть локально
+        reportItems.set(pid, local);
         added++;
+        continue;
       }
-    });
+      // Иначе запрашиваем через API (человек из другого курса)
+      try {
+        const person = await apiGet(`/api/participant/${pid}`);
+        reportItems.set(pid, person);
+        added++;
+      } catch (e) {
+        // запись могла быть удалена — пропускаем
+      }
+    }
     if (added > 0) {
       const total = reportItems.size;
       selectionAddReportBtn.classList.add('flash');
@@ -790,9 +956,10 @@ function showToast(msg) {
     document.body.appendChild(toast);
   }
   toast.textContent = msg;
+  toast.style.whiteSpace = 'pre-line';
   toast.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 4000);
 }
 
 // ===== Search =====
@@ -817,7 +984,9 @@ if (searchInput) {
         searchQuery = q;
         updateBreadcrumbs();
         try {
-          const results = await apiGet(`/api/search?q=${encodeURIComponent(q)}`);
+          let searchUrl = `/api/search?q=${encodeURIComponent(q)}`;
+          if (expertMode) searchUrl += `&is_expert=1`;
+          const results = await apiGet(searchUrl);
           renderSearchResults(results, q);
         } catch (err) {
           renderSearchResults([], q);
@@ -934,10 +1103,13 @@ if (filterDropdown) {
     e.stopPropagation();
 
     // Load filter options on demand
-    if (!filterOptionsCache || filterOptionsCache._year !== selectedYear) {
+    const filterCacheKey = `${selectedYear || ''}|${expertMode ? '1' : '0'}`;
+    if (!filterOptionsCache || filterOptionsCache._key !== filterCacheKey) {
       try {
-        filterOptionsCache = await apiGet(`/api/filter-options?year=${selectedYear || ''}`);
-        filterOptionsCache._year = selectedYear;
+        let foUrl = `/api/filter-options?year=${selectedYear || ''}`;
+        if (expertMode) foUrl += `&is_expert=1`;
+        filterOptionsCache = await apiGet(foUrl);
+        filterOptionsCache._key = filterCacheKey;
       } catch (err) {
         filterOptionsCache = { districts: [], org_types: [], positions: [], courses: [] };
       }
@@ -1070,9 +1242,13 @@ async function openFiltersModal(focusField) {
   if (!filtersModal) return;
 
   // Load filter options
-  if (!filterOptionsCache) {
+  const filterCacheKey = `${selectedYear || ''}|${expertMode ? '1' : '0'}`;
+  if (!filterOptionsCache || filterOptionsCache._key !== filterCacheKey) {
     try {
-      filterOptionsCache = await apiGet(`/api/filter-options?year=${selectedYear || ''}`);
+      let foUrl = `/api/filter-options?year=${selectedYear || ''}`;
+      if (expertMode) foUrl += `&is_expert=1`;
+      filterOptionsCache = await apiGet(foUrl);
+      filterOptionsCache._key = filterCacheKey;
     } catch (e) {
       filterOptionsCache = { districts: [], org_types: [], positions: [], courses: [] };
     }
@@ -1095,8 +1271,9 @@ async function openFiltersModal(focusField) {
     hideCourseSuggestions();
   }
 
-  document.getElementById('filterDateFrom').value = activeFilters.date_from || '';
-  document.getElementById('filterDateTo').value = activeFilters.date_to || '';
+  // Поля type="date" принимают YYYY-MM-DD — конвертируем из DD.MM.YYYY
+  document.getElementById('filterDateFrom').value = displayToIso(activeFilters.date_from);
+  document.getElementById('filterDateTo').value = displayToIso(activeFilters.date_to);
 
   filtersModal.style.display = 'flex';
 
@@ -1133,8 +1310,9 @@ if (filtersApplyBtn) {
     activeFilters.org_type = document.getElementById('filterOrgType').value || '';
     activeFilters.position = document.getElementById('filterPosition').value || '';
     activeFilters.course = document.getElementById('filterCourse').value || '';
-    activeFilters.date_from = document.getElementById('filterDateFrom').value || '';
-    activeFilters.date_to = document.getElementById('filterDateTo').value || '';
+    // Поля type="date" возвращают YYYY-MM-DD — конвертируем в DD.MM.YYYY для фильтрации
+    activeFilters.date_from = isoToDisplay(document.getElementById('filterDateFrom').value) || '';
+    activeFilters.date_to = isoToDisplay(document.getElementById('filterDateTo').value) || '';
     // Remove empty values
     Object.keys(activeFilters).forEach((k) => { if (!activeFilters[k]) delete activeFilters[k]; });
     updateFilterTags();
@@ -1225,6 +1403,16 @@ function openAddModal() {
   document.getElementById('addDateEnd').value = '';
   document.getElementById('addPeriod').value = '';
   document.getElementById('addOrgType').value = '';
+  document.getElementById('addFundingSource').value = '';
+  document.getElementById('addGender').value = '';
+  document.getElementById('addCourseProvider').value = '';
+  document.getElementById('addIncomingLetter').value = '';
+  document.getElementById('addResponseLetter').value = '';
+  document.getElementById('addDoOrder').value = '';
+  document.getElementById('addCroLetter').value = '';
+  document.getElementById('addCertificateSeries').value = '';
+  document.getElementById('addCertificateReg').value = '';
+  document.getElementById('addIsExpert').value = currentView === 'experts' ? '1' : '0';
   addModal.style.display = 'flex';
 }
 
@@ -1274,6 +1462,187 @@ document.querySelectorAll('.add-dropdown-item').forEach((item) => {
 if (addCloseBtn) addCloseBtn.addEventListener('click', () => { addModal.style.display = 'none'; });
 if (addCancelBtn) addCancelBtn.addEventListener('click', () => { addModal.style.display = 'none'; });
 
+// ===== Custom autocomplete dropdown (полный видимый список с прокруткой) =====
+let autocompleteOptions = null;
+function invalidateAutocompleteCache() {
+  autocompleteOptions = null;
+}
+async function loadAutocompleteOptions() {
+  if (autocompleteOptions) return autocompleteOptions;
+  try {
+    const opts = await apiGet('/api/filter-options');
+    autocompleteOptions = {
+      addPeriod: opts.periods || [],
+      editPeriod: opts.periods || [],
+      addCourse: opts.courses || [],
+      editCourse: opts.courses || [],
+      addWorkplace: opts.workplaces || [],
+      editWorkplace: opts.workplaces || [],
+      addPosition: opts.positions || [],
+      editPosition: opts.positions || [],
+      addDistrict: opts.districts || [],
+      editDistrict: opts.districts || [],
+      addOrgType: opts.org_types || [],
+      editOrgType: opts.org_types || [],
+      addFundingSource: opts.funding_sources || [],
+      editFundingSource: opts.funding_sources || [],
+      addCourseProvider: opts.course_providers || [],
+      editCourseProvider: opts.course_providers || [],
+    };
+  } catch (e) {
+    autocompleteOptions = {};
+  }
+  return autocompleteOptions;
+}
+
+// Глобальный контейнер для открытого дропдауна (одновременно только один)
+let activeDropdown = null;
+function closeAutocompleteDropdown() {
+  if (activeDropdown) {
+    activeDropdown.remove();
+    activeDropdown = null;
+    document.removeEventListener('click', onDocClickCloseDropdown);
+  }
+}
+function onDocClickCloseDropdown(e) {
+  if (activeDropdown && !activeDropdown.contains(e.target) && !e.target._isAutocompleteInput) {
+    closeAutocompleteDropdown();
+  }
+}
+
+function attachAutocomplete(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input || input._autocompleteAttached) return;
+  input._autocompleteAttached = true;
+  input._isAutocompleteInput = true;
+  input._acSuppress = false; // флаг для подавления повторного открытия после выбора
+
+  const open = async () => {
+    if (input._acSuppress) { input._acSuppress = false; return; }
+    const opts = await loadAutocompleteOptions();
+    const all = opts[inputId] || [];
+    if (!all.length) return;
+    showDropdown(input, all);
+  };
+
+  input.addEventListener('focus', open);
+  input.addEventListener('input', async () => {
+    if (input._acSuppress) { input._acSuppress = false; return; }
+    const opts = await loadAutocompleteOptions();
+    const all = opts[inputId] || [];
+    if (!all.length) return;
+    showDropdown(input, all);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAutocompleteDropdown();
+    if (e.key === 'Enter' && activeDropdown) {
+      const sel = activeDropdown.querySelector('.ac-item.active');
+      if (sel) {
+        input.value = sel.textContent;
+        closeAutocompleteDropdown();
+        e.preventDefault();
+      }
+    }
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && activeDropdown) {
+      e.preventDefault();
+      const items = activeDropdown.querySelectorAll('.ac-item');
+      if (!items.length) return;
+      let idx = Array.from(items).findIndex((it) => it.classList.contains('active'));
+      if (e.key === 'ArrowDown') idx = (idx + 1) % items.length;
+      else idx = idx <= 0 ? items.length - 1 : idx - 1;
+      items.forEach((it) => it.classList.remove('active'));
+      items[idx].classList.add('active');
+      items[idx].scrollIntoView({ block: 'nearest' });
+    }
+  });
+}
+
+function showDropdown(input, all) {
+  closeAutocompleteDropdown();
+  const val = input.value.trim().toLowerCase();
+  // Показываем ВСЕ варианты, если поле пустое; иначе отфильтрованные (но все)
+  const filtered = val
+    ? all.filter((v) => v.toLowerCase().includes(val))
+    : all.slice();
+  if (!filtered.length) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'ac-dropdown';
+  wrap.innerHTML = filtered
+    .map((v) => `<div class="ac-item">${escapeHtml(v)}</div>`)
+    .join('');
+  // позиционируем под полем
+  const rect = input.getBoundingClientRect();
+  wrap.style.position = 'fixed';
+  wrap.style.left = rect.left + 'px';
+  wrap.style.top = (rect.bottom + 2) + 'px';
+  wrap.style.width = Math.max(rect.width, 200) + 'px';
+  document.body.appendChild(wrap);
+  activeDropdown = wrap;
+
+  wrap.querySelectorAll('.ac-item').forEach((item) => {
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      input.value = item.textContent;
+      input._acSuppress = true; // подавить повторное открытие от focus/input
+      closeAutocompleteDropdown();
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    item.addEventListener('mouseenter', () => {
+      wrap.querySelectorAll('.ac-item').forEach((it) => it.classList.remove('active'));
+      item.classList.add('active');
+    });
+  });
+  document.addEventListener('click', onDocClickCloseDropdown);
+}
+
+function attachAllAutocomplete() {
+  [
+    'addPeriod', 'editPeriod',
+    'addCourse', 'editCourse',
+    'addWorkplace', 'editWorkplace',
+    'addPosition', 'editPosition',
+    'addDistrict', 'editDistrict',
+    'addOrgType', 'editOrgType',
+    'addFundingSource', 'editFundingSource',
+    'addCourseProvider', 'editCourseProvider',
+  ].forEach(attachAutocomplete);
+}
+// Грузим опции и навешиваем autocomplete при открытии модалок
+async function initAutocompleteOnOpen() {
+  loadAutocompleteOptions().then(attachAllAutocomplete);
+  await loadImportFileSelect();
+}
+
+// Загружаем список .xlsx файлов для выбора в модалке добавления
+async function loadImportFileSelect() {
+  const sel = document.getElementById('addImportFile');
+  if (!sel) return;
+  try {
+    const imports = await apiGet('/api/imports-with-files');
+    const xlsxImports = imports.filter((i) => i.is_xlsx && i.file_exists);
+    if (!xlsxImports.length) {
+      sel.innerHTML = '<option value="">Нет .xlsx файлов</option>';
+      return;
+    }
+    // Сортируем по числу записей (наибольшее первым)
+    xlsxImports.sort((a, b) => (b.record_count || 0) - (a.record_count || 0));
+    sel.innerHTML = xlsxImports.map((i) =>
+      `<option value="${i.id}">${i.original_name} (${i.record_count || 0} зап.)</option>`
+    ).join('');
+  } catch (e) {
+    sel.innerHTML = '<option value="">Ошибка загрузки списка</option>';
+  }
+}
+
+if (addModal) {
+  document.getElementById('addRecordBtn') && document.getElementById('addRecordBtn').addEventListener('click', initAutocompleteOnOpen);
+  document.getElementById('addRecordBtnBottom') && document.getElementById('addRecordBtnBottom').addEventListener('click', initAutocompleteOnOpen);
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#editParticipantBtn')) initAutocompleteOnOpen();
+});
+
 if (addSaveBtn) {
   addSaveBtn.addEventListener('click', async () => {
     const name = document.getElementById('addName').value.trim();
@@ -1292,15 +1661,40 @@ if (addSaveBtn) {
       workplace: document.getElementById('addWorkplace').value.trim(),
       position: document.getElementById('addPosition').value.trim(),
       district: document.getElementById('addDistrict').value.trim(),
-      date_start: document.getElementById('addDateStart').value.trim(),
-      date_end: document.getElementById('addDateEnd').value.trim(),
+      date_start: isoToDisplay(document.getElementById('addDateStart').value),
+      date_end: isoToDisplay(document.getElementById('addDateEnd').value),
       period: document.getElementById('addPeriod').value.trim(),
       org_type: document.getElementById('addOrgType').value.trim(),
+      funding_source: document.getElementById('addFundingSource').value.trim(),
+      gender: document.getElementById('addGender').value.trim(),
+      course_provider: document.getElementById('addCourseProvider').value.trim(),
+      incoming_letter: document.getElementById('addIncomingLetter').value.trim(),
+      response_letter: document.getElementById('addResponseLetter').value.trim(),
+      do_order: document.getElementById('addDoOrder').value.trim(),
+      cro_letter: document.getElementById('addCroLetter').value.trim(),
+      certificate_series: document.getElementById('addCertificateSeries').value.trim(),
+      certificate_reg: document.getElementById('addCertificateReg').value.trim(),
+      is_expert: parseInt(document.getElementById('addIsExpert').value) || 0,
+      import_id: parseInt(document.getElementById('addImportFile').value) || null,
     };
 
     try {
-      await apiPost('/api/participant', data);
+      // Сначала пробуем записать в Excel-файл (исходник + копия)
+      let addedMsg = 'Запись добавлена';
+      try {
+        const res = await apiPost('/api/participant/excel', data);
+        addedMsg = `Запись добавлена в Excel (${res.sheet || 'лист'}, строка ${res.row || '—'})`;
+        if (res.excel_errors && res.excel_errors.length) {
+          addedMsg += `. Внимание: оригинал не обновлён (${res.excel_errors.join('; ')})`;
+        }
+      } catch (e) {
+        // Если нет .xlsx или ошибка — пишем только в БД
+        await apiPost('/api/participant', data);
+        addedMsg = 'Запись добавлена в БД (Excel недоступен)';
+      }
       addModal.style.display = 'none';
+      showToast(addedMsg);
+      invalidateAutocompleteCache(); // подсказки обновятся при следующем открытии
       // Reload data
       if (currentView === 'course') {
         reloadParticipants();
@@ -1320,6 +1714,159 @@ if (addModal) {
     if (e.target === addModal) addModal.style.display = 'none';
   });
 }
+
+// ===== Edit Record Modal =====
+const editModal = document.getElementById('editModal');
+const editCloseBtn = document.getElementById('editCloseBtn');
+const editCancelBtn = document.getElementById('editCancelBtn');
+const editSaveBtn = document.getElementById('editSaveBtn');
+let editingParticipantId = null;
+
+function openEditModal(person) {
+  if (!editModal) return;
+  editingParticipantId = person.id;
+  document.getElementById('editName').value = person.name || '';
+  document.getElementById('editYear').value = person.year || '';
+  document.getElementById('editPeriod').value = person.period || '';
+  document.getElementById('editCourse').value = person.course || '';
+  document.getElementById('editWorkplace').value = person.workplace || '';
+  document.getElementById('editPosition').value = person.position || '';
+  document.getElementById('editDistrict').value = person.district || '';
+  // Поля type="date" принимают YYYY-MM-DD — конвертируем из DD.MM.YYYY
+  document.getElementById('editDateStart').value = displayToIso(person.date_start);
+  document.getElementById('editDateEnd').value = displayToIso(person.date_end);
+  document.getElementById('editOrgType').value = person.org_type || '';
+  document.getElementById('editFundingSource').value = person.funding_source || '';
+  document.getElementById('editGender').value = person.gender || '';
+  document.getElementById('editCourseProvider').value = person.course_provider || '';
+  document.getElementById('editIncomingLetter').value = person.incoming_letter || '';
+  document.getElementById('editResponseLetter').value = person.response_letter || '';
+  document.getElementById('editDoOrder').value = person.do_order || '';
+  document.getElementById('editCroLetter').value = person.cro_letter || '';
+  document.getElementById('editCertificateSeries').value = person.certificate_series || '';
+  document.getElementById('editCertificateReg').value = person.certificate_reg || '';
+  document.getElementById('editIsExpert').value = person.is_expert ? '1' : '0';
+  // Информация о записи в Excel
+  const excelInfo = document.getElementById('editExcelInfo');
+  const excelHint = document.getElementById('editExcelHint');
+  const fileName = person.import_name ? person.import_name : '';
+  if (person.source_sheet && person.source_row) {
+    excelInfo.style.display = '';
+    excelHint.innerHTML = `Запись связана с Excel: <strong>${escapeHtml(fileName)}</strong>, лист «${escapeHtml(person.source_sheet)}», строка ${person.source_row}. Изменения будут сохранены в БД и в исходном файле.`;
+    excelHint.style.color = '#10b981';
+  } else if (person.import_id) {
+    excelInfo.style.display = '';
+    excelHint.innerHTML = `Запись из файла: <strong>${escapeHtml(fileName)}</strong>, но точная строка не определена. Изменения сохранятся только в БД.`;
+    excelHint.style.color = '#d97706';
+  } else {
+    excelInfo.style.display = '';
+    excelHint.textContent = 'Запись добавлена вручную. Изменения сохранятся только в БД.';
+    excelHint.style.color = '#999';
+  }
+  editModal.style.display = 'flex';
+}
+
+if (editCloseBtn) editCloseBtn.addEventListener('click', () => { editModal.style.display = 'none'; });
+if (editCancelBtn) editCancelBtn.addEventListener('click', () => { editModal.style.display = 'none'; });
+if (editModal) {
+  editModal.addEventListener('click', (e) => {
+    if (e.target === editModal) editModal.style.display = 'none';
+  });
+}
+
+if (editSaveBtn) {
+  editSaveBtn.addEventListener('click', async () => {
+    if (!editingParticipantId) return;
+    const name = document.getElementById('editName').value.trim();
+    const year = document.getElementById('editYear').value.trim();
+    const course = document.getElementById('editCourse').value.trim();
+    if (!name || !year || !course) {
+      alert('Заполните обязательные поля: ФИО, Год, Курс');
+      return;
+    }
+    const data = {
+      name,
+      year: parseInt(year),
+      course,
+      workplace: document.getElementById('editWorkplace').value.trim(),
+      position: document.getElementById('editPosition').value.trim(),
+      district: document.getElementById('editDistrict').value.trim(),
+      date_start: isoToDisplay(document.getElementById('editDateStart').value),
+      date_end: isoToDisplay(document.getElementById('editDateEnd').value),
+      period: document.getElementById('editPeriod').value.trim(),
+      org_type: document.getElementById('editOrgType').value.trim(),
+      funding_source: document.getElementById('editFundingSource').value.trim(),
+      gender: document.getElementById('editGender').value.trim(),
+      course_provider: document.getElementById('editCourseProvider').value.trim(),
+      incoming_letter: document.getElementById('editIncomingLetter').value.trim(),
+      response_letter: document.getElementById('editResponseLetter').value.trim(),
+      do_order: document.getElementById('editDoOrder').value.trim(),
+      cro_letter: document.getElementById('editCroLetter').value.trim(),
+      certificate_series: document.getElementById('editCertificateSeries').value.trim(),
+      certificate_reg: document.getElementById('editCertificateReg').value.trim(),
+      is_expert: parseInt(document.getElementById('editIsExpert').value) || 0,
+    };
+    editSaveBtn.disabled = true;
+    editSaveBtn.textContent = 'Сохранение...';
+    try {
+      const result = await apiPut(`/api/participant/${editingParticipantId}`, data);
+      editModal.style.display = 'none';
+      let msg = 'Запись обновлена';
+      if (result.excel_written) msg += ' (в т.ч. в Excel-файле)';
+      else if (result.excel_error) msg += `. Внимание: Excel не обновлён (${result.excel_error})`;
+      showToast(msg);
+      invalidateAutocompleteCache(); // подсказки обновятся при следующем открытии
+      // Перезагружаем карточку
+      if (currentView === 'participant') {
+        const person = await apiGet(`/api/participant/${editingParticipantId}`);
+        renderParticipant(person);
+      }
+    } catch (e) {
+      alert('Ошибка: ' + e.message);
+    } finally {
+      editSaveBtn.disabled = false;
+      editSaveBtn.textContent = 'Сохранить';
+    }
+  });
+}
+
+// Кнопка редактирования в карточке участника
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('#editParticipantBtn');
+  if (btn && selectedParticipant) {
+    openEditModal(selectedParticipant);
+  }
+});
+
+// Кнопка удаления в карточке участника
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('#deleteParticipantBtn');
+  if (!btn || !selectedParticipant) return;
+  const id = selectedParticipant.id;
+  const name = selectedParticipant.name || '';
+  const fileInfo = selectedParticipant.import_name ? `\n\nФайл: ${selectedParticipant.import_name}, лист «${selectedParticipant.source_sheet || '—'}», строка ${selectedParticipant.source_row || '—'}` : '';
+  if (!confirm(`Удалить запись?\n\n${name}${fileInfo}\n\nЗапись будет удалена из базы данных и из Excel-файла.`)) return;
+  btn.disabled = true;
+  btn.textContent = 'Удаление...';
+  try {
+    const res = await apiDelete(`/api/participant/${id}`);
+    let msg = 'Запись удалена';
+    if (res.excel_deleted) msg += ` (в т.ч. из Excel: ${res.import_name || ''})`;
+    if (res.excel_errors && res.excel_errors.length) msg += `. Внимание: Excel не обновлён (${res.excel_errors.join('; ')})`;
+    showToast(msg);
+    invalidateAutocompleteCache();
+    // Возвращаемся к предыдущему виду
+    if (selectedYear) {
+      navigateTo('year');
+    } else {
+      navigateTo(expertMode ? 'experts' : 'registry');
+    }
+  } catch (err) {
+    alert('Ошибка удаления: ' + err.message);
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V2.5h4V4M5 4l.5 9h5L11 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Удалить</span>';
+  }
+});
 
 // ===== Excel Upload =====
 const excelModal = document.getElementById('excelModal');
@@ -1390,6 +1937,16 @@ async function uploadExcelFile(file) {
     alert('Выберите файл .xls или .xlsx');
     return;
   }
+  // Проверка размера: >50 МБ — скорее всего ошибка
+  const MAX_SIZE = 50 * 1024 * 1024;
+  if (file.size > MAX_SIZE) {
+    alert(`Файл слишком большой (${(file.size / 1024 / 1024).toFixed(1)} МБ). Максимум 50 МБ.`);
+    return;
+  }
+  if (file.size === 0) {
+    alert('Файл пустой.');
+    return;
+  }
 
   // Show progress
   excelDropZone.style.display = 'none';
@@ -1426,6 +1983,7 @@ async function uploadExcelFile(file) {
             </div>`;
         } else if (result.ok) {
           const dataRows = result.data || [];
+          const skipped = result.skipped_duplicates || 0;
           let tableHtml = '';
           if (dataRows.length > 0) {
             tableHtml = `
@@ -1469,12 +2027,15 @@ async function uploadExcelFile(file) {
                 </div>
               </div>`;
           }
+          const skippedHtml = skipped > 0
+            ? `<br><span style="color:#d97706">Пропущено дубликатов: ${skipped} (уже есть в базе)</span>`
+            : '';
           excelResult.innerHTML = `
             <div class="excel-result-icon excel-result-icon--ok">✓</div>
             <div class="excel-result-text">
               <strong>Импорт завершён</strong><br>
               Файл: ${file.name}<br>
-              Записей: ${result.rows}<br>
+              Записей: ${result.rows}${skippedHtml}<br>
               Год: ${result.year || '—'}
             </div>
             ${tableHtml}`;
@@ -1549,7 +2110,9 @@ document.querySelectorAll('.nav-menu-item').forEach((item) => {
       closeReportPage();
       navigateTo('registry');
     } else if (action === 'experts') {
-      alert('Эксперты — в разработке');
+      closeStatsPage();
+      closeReportPage();
+      navigateTo('experts');
     } else if (action === 'stats') {
       openStatsPage();
     } else if (action === 'report') {
@@ -1803,6 +2366,11 @@ function renderReport() {
           <th>Должность</th>
           <th>Район</th>
           <th>Тип ОУ</th>
+          <th>Источник финанс.</th>
+          <th>Кто проводит</th>
+          <th>Серия, № удост.</th>
+          <th>Рег. № удост.</th>
+          <th>Эксперт</th>
           <th></th>
         </tr>
       </thead>
@@ -1819,6 +2387,11 @@ function renderReport() {
         <td class="rt-position">${escapeHtml(item.position || '')}</td>
         <td class="rt-district">${escapeHtml(item.district || '')}</td>
         <td class="rt-orgtype">${escapeHtml(item.org_type || '')}</td>
+        <td>${escapeHtml(item.funding_source || '')}</td>
+        <td>${escapeHtml(item.course_provider || '')}</td>
+        <td>${escapeHtml(item.certificate_series || '')}</td>
+        <td>${escapeHtml(item.certificate_reg || '')}</td>
+        <td>${item.is_expert ? 'Да' : ''}</td>
         <td class="rt-actions"><button class="rt-remove" data-report-id="${escapeHtml(String(item.id))}" aria-label="Удалить">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button></td>
@@ -1880,7 +2453,150 @@ if (reportExportCsvBtn) {
   });
 }
 
-// ===== Add entire course to report =====
+// ===== Поиск людей для добавления в отчёт (по всем годам/экспертам) =====
+const reportAddSearchInput = document.getElementById('reportAddSearchInput');
+const reportAddResults = document.getElementById('reportAddResults');
+const reportAddYearDropdown = document.getElementById('reportAddYearDropdown');
+const reportAddExpertDropdown = document.getElementById('reportAddExpertDropdown');
+
+let reportAddYear = null;     // null = все годы
+let reportAddExpert = null;    // null = все, 0 = реестр, 1 = эксперты
+let reportAddSearchTimer = null;
+
+// Заполняем дропдаун годов при открытии страницы отчёта
+async function loadReportAddYears() {
+  if (!reportAddYearDropdown) return;
+  try {
+    const years = await apiGet('/api/years');
+    const items = [{ value: '', label: 'Все годы' }];
+    years.forEach((y) => items.push({ value: String(y.year), label: `${y.year} (${y.count})` }));
+    bindReportDropdown(reportAddYearDropdown, items, (val) => {
+      reportAddYear = val ? parseInt(val, 10) : null;
+      runReportAddSearch();
+    });
+  } catch (e) {
+    // игнорируем
+  }
+}
+
+// Заполняем дропдаун категории (реестр/эксперты)
+if (reportAddExpertDropdown) {
+  const items = [
+    { value: '', label: 'Все' },
+    { value: '0', label: 'Реестр' },
+    { value: '1', label: 'Эксперты' },
+  ];
+  bindReportDropdown(reportAddExpertDropdown, items, (val) => {
+    reportAddExpert = val === '' ? null : parseInt(val, 10);
+    runReportAddSearch();
+  });
+}
+
+// Универсальный биндер дропдауна для панели отчёта
+function bindReportDropdown(dropdown, items, onSelect) {
+  const valueEl = dropdown.querySelector('.dropdown-value');
+  dropdown.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menuItems = items.map((it) =>
+      `<div class="dropdown-menu-item" data-value="${escapeHtml(it.value)}" title="${escapeHtml(it.label)}">${escapeHtml(it.label)}</div>`
+    ).join('');
+    showDropdownMenu(dropdown, items, (item) => {
+      valueEl.textContent = item.label;
+      onSelect(item.value);
+    });
+  });
+}
+
+// Поиск с debounce
+if (reportAddSearchInput) {
+  reportAddSearchInput.addEventListener('input', () => {
+    clearTimeout(reportAddSearchTimer);
+    reportAddSearchTimer = setTimeout(runReportAddSearch, 300);
+  });
+}
+
+async function runReportAddSearch() {
+  if (!reportAddResults) return;
+  const q = reportAddSearchInput ? reportAddSearchInput.value.trim() : '';
+  if (q.length < 2) {
+    reportAddResults.innerHTML = '<div class="report-add-hint">Введите минимум 2 символа для поиска</div>';
+    return;
+  }
+  reportAddResults.innerHTML = '<div class="report-add-hint">Поиск...</div>';
+  try {
+    let url = `/api/search?q=${encodeURIComponent(q)}`;
+    if (reportAddYear) url += `&year=${reportAddYear}`;
+    if (reportAddExpert !== null) url += `&is_expert=${reportAddExpert}`;
+    const results = await apiGet(url);
+    renderReportAddResults(results);
+  } catch (e) {
+    reportAddResults.innerHTML = '<div class="report-add-hint">Ошибка поиска</div>';
+  }
+}
+
+function renderReportAddResults(results) {
+  if (!reportAddResults) return;
+  if (!results || results.length === 0) {
+    reportAddResults.innerHTML = '<div class="report-add-hint">Ничего не найдено</div>';
+    return;
+  }
+  // Ограничиваем до 50 результатов для производительности
+  const limited = results.slice(0, 50);
+  let html = '<div class="report-add-list">';
+  limited.forEach((item) => {
+    const inReport = reportItems.has(String(item.id));
+    const expertBadge = item.is_expert ? '<span class="report-add-badge report-add-badge--expert">Эксперт</span>' : '';
+    html += `
+      <div class="report-add-row${inReport ? ' report-add-row--added' : ''}" data-id="${escapeHtml(String(item.id))}">
+        <div class="report-add-row-main">
+          <div class="report-add-row-name">${escapeHtml(item.name || '')} ${expertBadge}</div>
+          <div class="report-add-row-sub">
+            <span>${escapeHtml(String(item.year || ''))}</span>
+            <span>·</span>
+            <span title="${escapeHtml(item.course || '')}">${escapeHtml((item.course || '').slice(0, 60))}${(item.course || '').length > 60 ? '…' : ''}</span>
+          </div>
+          <div class="report-add-row-sub report-add-row-sub--muted">
+            ${escapeHtml(item.workplace || '')}${item.position ? ' · ' + escapeHtml(item.position) : ''}
+          </div>
+        </div>
+        <button class="report-add-btn${inReport ? ' report-add-btn--added' : ''}" data-id="${escapeHtml(String(item.id))}">
+          ${inReport ? '✓ В отчёте' : '+ Добавить'}
+        </button>
+      </div>`;
+  });
+  if (results.length > 50) {
+    html += `<div class="report-add-more">Показано 50 из ${results.length}. Уточните запрос.</div>`;
+  }
+  html += '</div>';
+  reportAddResults.innerHTML = html;
+
+  // Биндим кнопки добавления
+  reportAddResults.querySelectorAll('.report-add-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      if (reportItems.has(id)) return;
+      // Получаем полные данные участника (search возвращает сокращённые)
+      try {
+        const person = await apiGet(`/api/participant/${id}`);
+        reportItems.set(id, person);
+        showToast(`Добавлено в отчёт: ${person.name}. Всего: ${reportItems.size}`);
+        renderReport();
+        renderReportAddResults(results); // обновляем кнопку
+      } catch (e) {
+        showToast('Не удалось добавить запись');
+      }
+    });
+  });
+}
+
+// Загружаем годы при открытии страницы отчёта
+const originalOpenReportPage = openReportPage;
+openReportPage = function() {
+  originalOpenReportPage();
+  loadReportAddYears();
+};
+
+
 const addCourseToReportBtn = document.getElementById('addCourseToReportBtn');
 if (addCourseToReportBtn) {
   addCourseToReportBtn.addEventListener('click', async () => {
@@ -2432,6 +3148,19 @@ async function doWipe(deleteFiles) {
   settingsWipeBtn.textContent = 'Удаление...';
   try {
     const result = await apiPost('/api/reset', { delete_files: deleteFiles });
+    // Полностью сбрасываем все кэши
+    yearsCache = null;
+    filterOptionsCache = null;
+    invalidateAutocompleteCache();
+    reportItems = [];
+    pageCheckedIds.clear();
+    allParticipants = [];
+    selectedParticipant = null;
+    selectedYear = null;
+    selectedCourse = null;
+    activeFilters = {};
+    // Очищаем localStorage от возможных закэшированных данных
+    try { localStorage.removeItem('reportItems'); } catch (e) {}
     settingsWipeBtn.textContent = 'Удалено';
     settingsWipeBtn.disabled = false;
     setTimeout(() => { settingsWipeBtn.textContent = 'Удалить всё'; }, 2000);
@@ -2450,6 +3179,70 @@ async function doWipe(deleteFiles) {
 if (wipeDbOnly) wipeDbOnly.addEventListener('click', () => doWipe(false));
 if (wipeAll) wipeAll.addEventListener('click', () => doWipe(true));
 
+// "Обновить из Excel" — реимпорт данных из папки exel
+const refreshExcelBtn = document.getElementById('refreshExcelBtn');
+if (refreshExcelBtn) {
+  refreshExcelBtn.addEventListener('click', async () => {
+    if (refreshExcelBtn.disabled) return;
+    refreshExcelBtn.disabled = true;
+    refreshExcelBtn.style.opacity = '0.5';
+    const originalHTML = refreshExcelBtn.innerHTML;
+    refreshExcelBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M14.5 4.5A6 6 0 1 0 15 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 9 9" to="360 9 9" dur="0.8s" repeatCount="indefinite"/></path></svg>';
+    showToast('Обновление данных из Excel...');
+    try {
+      const res = await apiPost('/api/reimport', {});
+      let msg = `Обновлено: ${res.total_rows} строк`;
+      if (res.total_skipped > 0) msg += `, пропущено дубликатов: ${res.total_skipped}`;
+      if (res.duplicates > 0) msg += ` (файл уже загружен — без изменений)`;
+      showToast(msg);
+      invalidateAutocompleteCache();
+      yearsCache = null;
+      filterOptionsCache = null;
+      // Перезагружаем текущее представление
+      if (currentView === 'participant') {
+        navigateTo('registry');
+      } else {
+        navigateTo(currentView);
+      }
+    } catch (e) {
+      showToast('Ошибка обновления: ' + e.message);
+    } finally {
+      refreshExcelBtn.disabled = false;
+      refreshExcelBtn.style.opacity = '';
+      refreshExcelBtn.innerHTML = originalHTML;
+    }
+  });
+}
+
+// "Выгрузить в Excel" — выгрузка данных из БД в v4.xlsx
+const exportExcelBtn = document.getElementById('exportExcelBtn');
+if (exportExcelBtn) {
+  exportExcelBtn.addEventListener('click', async () => {
+    if (exportExcelBtn.disabled) return;
+    exportExcelBtn.disabled = true;
+    exportExcelBtn.style.opacity = '0.5';
+    const originalHTML = exportExcelBtn.innerHTML;
+    exportExcelBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 12V3M5.5 8.5L9 12l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><animateTransform attributeName="transform" type="translate" values="0 0;0 -2;0 0" dur="0.6s" repeatCount="indefinite"/></path></svg>';
+    showToast('Выгрузка данных в Excel...');
+    try {
+      const res = await apiPost('/api/export-excel', {});
+      let msg = `Выгружено: ${res.total_records} записей в ${Object.keys(res.sheets).length} лист(ов)`;
+      msg += `\nФайл: ${res.file}`;
+      if (res.rows_reindexed) msg += `\nОбновлено позиций: ${res.rows_reindexed}`;
+      if (res.excel_errors && res.excel_errors.length) {
+        msg += `\nВнимание: оригинал не обновлён (${res.excel_errors.join('; ')})`;
+      }
+      showToast(msg);
+    } catch (e) {
+      showToast('Ошибка выгрузки: ' + e.message);
+    } finally {
+      exportExcelBtn.disabled = false;
+      exportExcelBtn.style.opacity = '';
+      exportExcelBtn.innerHTML = originalHTML;
+    }
+  });
+}
+
 // "Профиль" — toggle profile dropdown
 const profileBtn = document.getElementById('profileBtn');
 const profileDropdown = document.getElementById('profileDropdown');
@@ -2466,7 +3259,7 @@ if (profileBtn && profileDropdown) {
     }
   });
 }
-
+  
 document.addEventListener('click', (e) => {
   if (profileDropdown && profileDropdown.style.display === 'block' &&
       !profileBtn.contains(e.target) && !profileDropdown.contains(e.target)) {
@@ -2489,4 +3282,7 @@ if (logoutBtn) {
 }
 
 // ===== Init =====
-navigateTo('registry');
+// Заменяем начальную запись истории на состояние реестра,
+// чтобы popstate корректно отрабатывал при возврате к старту.
+history.replaceState({ view: 'registry', year: null, course: null, participantId: null, expertMode: false }, '', '#registry');
+navigateTo('registry', { skipHistory: true });

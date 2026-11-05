@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS imports (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   original_name TEXT,
   stored_path TEXT,
+  source_path TEXT,
   file_hash TEXT,
   year INTEGER,
   uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -20,10 +21,23 @@ CREATE TABLE IF NOT EXISTS registry (
   date_end TEXT,
   district TEXT,
   org_type TEXT,
+  funding_source TEXT,
+  gender TEXT,
+  course_provider TEXT,
+  incoming_letter TEXT,
+  response_letter TEXT,
+  do_order TEXT,
+  cro_letter TEXT,
+  certificate_series TEXT,
+  certificate_reg TEXT,
+  is_expert INTEGER NOT NULL DEFAULT 0,
   import_id INTEGER REFERENCES imports(id),
+  source_sheet TEXT,
+  source_row INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_registry_year ON registry(year);
 CREATE INDEX IF NOT EXISTS idx_registry_course ON registry(course);
 CREATE INDEX IF NOT EXISTS idx_registry_name ON registry(name);
+CREATE INDEX IF NOT EXISTS idx_registry_expert ON registry(is_expert);

@@ -38,6 +38,18 @@
               <button class="nav-menu-item" data-nav-action="settings">Настройки</button>
             </div>
           </div>
+          <button class="tool-btn" id="refreshExcelBtn" title="Обновить данные из Excel" aria-label="Обновить из Excel">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M14.5 4.5A6 6 0 1 0 15 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M12 2.5v3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button class="tool-btn" id="exportExcelBtn" title="Выгрузить данные в Excel" aria-label="Выгрузить в Excel">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M9 12V3M5.5 8.5L9 12l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M3 14v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
           <button class="tool-btn" aria-label="Профиль" id="profileBtn">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <circle cx="9" cy="6" r="3.5" stroke="currentColor" stroke-width="1.5"/>
@@ -294,11 +306,11 @@
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Дата начала (от)</label>
-            <input type="text" class="form-input" id="filterDateFrom" placeholder="ДД.ММ.ГГГГ">
+            <input type="date" class="form-input" id="filterDateFrom">
           </div>
           <div class="form-group">
             <label class="form-label">Дата окончания (до)</label>
-            <input type="text" class="form-input" id="filterDateTo" placeholder="ДД.ММ.ГГГГ">
+            <input type="date" class="form-input" id="filterDateTo">
           </div>
         </div>
       </div>
@@ -352,21 +364,204 @@
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Дата начала</label>
-            <input type="text" class="form-input" id="addDateStart" placeholder="ДД.ММ.ГГГГ">
+            <input type="date" class="form-input" id="addDateStart">
           </div>
           <div class="form-group">
             <label class="form-label">Дата окончания</label>
-            <input type="text" class="form-input" id="addDateEnd" placeholder="ДД.ММ.ГГГГ">
+            <input type="date" class="form-input" id="addDateEnd">
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">Тип ОУ</label>
           <input type="text" class="form-input" id="addOrgType" placeholder="Тип образовательного учреждения">
         </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Источник финансирования</label>
+            <input type="text" class="form-input" id="addFundingSource" placeholder="Региональный бюджет / Внебюджет">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Пол</label>
+            <select class="form-select" id="addGender">
+              <option value="">—</option>
+              <option value="Женский">Женский</option>
+              <option value="Мужской">Мужской</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Кто проводит курсы</label>
+          <input type="text" class="form-input" id="addCourseProvider" placeholder="ИРО, МИНПРОС, ЮГУ, СУРГУ, КВАНТОРИУМ, ДО">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">ВХ ИРО или ДР</label>
+            <input type="text" class="form-input" id="addIncomingLetter" placeholder="письмо, №, дата">
+          </div>
+          <div class="form-group">
+            <label class="form-label">ОТВЕТ ИРО или ДР</label>
+            <input type="text" class="form-input" id="addResponseLetter" placeholder="№, дата">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">ПРИКАЗ ДО</label>
+            <input type="text" class="form-input" id="addDoOrder" placeholder="№, дата">
+          </div>
+          <div class="form-group">
+            <label class="form-label">ПИСЬМО ЦРО</label>
+            <input type="text" class="form-input" id="addCroLetter" placeholder="№, дата">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Серия, № удостоверения</label>
+            <input type="text" class="form-input" id="addCertificateSeries" placeholder="Серия и номер">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Рег. № удостоверения</label>
+            <input type="text" class="form-input" id="addCertificateReg" placeholder="Регистрационный номер">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Эксперт</label>
+          <select class="form-select" id="addIsExpert">
+            <option value="0">Нет (реестр)</option>
+            <option value="1">Да (эксперт)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Файл Excel для записи</label>
+          <select class="form-select" id="addImportFile">
+            <option value="">Загрузка...</option>
+          </select>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="addCancelBtn">Отмена</button>
         <button class="btn-primary" id="addSaveBtn">Добавить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Autocomplete dropdowns are built dynamically by dashboard.js ===== -->
+
+  <!-- ===== Edit Record Modal ===== -->
+  <div class="modal-overlay" id="editModal" style="display:none;">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Редактировать запись</h3>
+        <button class="modal-close" id="editCloseBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">ФИО слушателя *</label>
+          <input type="text" class="form-input" id="editName">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Год *</label>
+            <input type="number" class="form-input" id="editYear">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Сроки обучения</label>
+            <input type="text" class="form-input" id="editPeriod">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Курс *</label>
+          <input type="text" class="form-input" id="editCourse">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Место работы</label>
+          <input type="text" class="form-input" id="editWorkplace">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Должность</label>
+            <input type="text" class="form-input" id="editPosition">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Район</label>
+            <input type="text" class="form-input" id="editDistrict">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Дата начала</label>
+            <input type="date" class="form-input" id="editDateStart">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Дата окончания</label>
+            <input type="date" class="form-input" id="editDateEnd">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Тип ОУ</label>
+          <input type="text" class="form-input" id="editOrgType">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Источник финансирования</label>
+            <input type="text" class="form-input" id="editFundingSource">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Пол</label>
+            <select class="form-select" id="editGender">
+              <option value="">—</option>
+              <option value="Женский">Женский</option>
+              <option value="Мужской">Мужской</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Кто проводит курсы</label>
+          <input type="text" class="form-input" id="editCourseProvider">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">ВХ ИРО или ДР</label>
+            <input type="text" class="form-input" id="editIncomingLetter">
+          </div>
+          <div class="form-group">
+            <label class="form-label">ОТВЕТ ИРО или ДР</label>
+            <input type="text" class="form-input" id="editResponseLetter">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">ПРИКАЗ ДО</label>
+            <input type="text" class="form-input" id="editDoOrder">
+          </div>
+          <div class="form-group">
+            <label class="form-label">ПИСЬМО ЦРО</label>
+            <input type="text" class="form-input" id="editCroLetter">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Серия, № удостоверения</label>
+            <input type="text" class="form-input" id="editCertificateSeries">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Рег. № удостоверения</label>
+            <input type="text" class="form-input" id="editCertificateReg">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Эксперт</label>
+          <select class="form-select" id="editIsExpert">
+            <option value="0">Нет (реестр)</option>
+            <option value="1">Да (эксперт)</option>
+          </select>
+        </div>
+        <div class="form-group" id="editExcelInfo" style="display:none;">
+          <div class="form-hint" id="editExcelHint"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="editCancelBtn">Отмена</button>
+        <button class="btn-primary" id="editSaveBtn">Сохранить</button>
       </div>
     </div>
   </div>
@@ -451,6 +646,36 @@
       </div>
     </div>
     <div class="report-summary" id="reportSummary"></div>
+
+    <!-- Панель добавления людей в отчёт (поиск по всем годам/экспертам) -->
+    <div class="report-add-panel">
+      <div class="report-add-panel-title">Добавить в отчёт (поиск по всем годам и экспертам)</div>
+      <div class="report-add-panel-controls">
+        <div class="report-add-search">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="7" cy="7" r="5.5" stroke="#999" stroke-width="1.5"/>
+            <path d="M11 11l3.5 3.5" stroke="#999" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <input type="text" id="reportAddSearchInput" placeholder="Поиск по ФИО, месту работы, должности...">
+        </div>
+        <div class="dropdown" data-dropdown id="reportAddYearDropdown">
+          <span class="dropdown-label">Год</span>
+          <span class="dropdown-value">Все</span>
+          <svg class="chevron-down" width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 5l4 4 4-4" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="dropdown" data-dropdown id="reportAddExpertDropdown">
+          <span class="dropdown-label">Категория</span>
+          <span class="dropdown-value">Все</span>
+          <svg class="chevron-down" width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 5l4 4 4-4" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+      <div class="report-add-results" id="reportAddResults"></div>
+    </div>
+
     <div class="report-table-wrap" id="reportTableWrap"></div>
 
     <!-- Saved reports history -->
@@ -467,7 +692,7 @@
   <div class="selection-bar" id="selectionBar" style="display:none;">
     <div class="selection-bar-info">
       <span class="selection-bar-count" id="selectionBarCount">0</span>
-      <span class="selection-bar-label">выбрано</span>
+      <span class="selection-bar-label">выбрано <span class="selection-bar-hint">(выбор сохраняется между курсами)</span></span>
     </div>
     <div class="selection-bar-actions">
       <button class="selection-bar-btn selection-bar-btn--ghost" id="selectionClearBtn">Снять выделение</button>
